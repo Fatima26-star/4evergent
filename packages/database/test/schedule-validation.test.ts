@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateScheduleIntent } from "../src/schedule-validation.js";
+import { validateScheduleExpression, validateScheduleIntent } from "../src/schedule-validation.js";
 import type { AgentIntent } from "@4evergent/shared";
 
 // A real 56-char StrKey ed25519 public key (checksum-valid).
@@ -59,4 +59,15 @@ test("validateScheduleIntent: non-payment intent is rejected", () => {
   } as AgentIntent);
   assert.equal(r.valid, false);
   assert.match(r.error!, /unsupported intent type/);
+});
+
+test("validateScheduleExpression computes nextRunAt in the requested timezone", () => {
+  const from = new Date("2024-01-01T00:30:00.000Z");
+  const utc = validateScheduleExpression("0 9 * * *", "UTC", from);
+  const tokyo = validateScheduleExpression("0 9 * * *", "Asia/Tokyo", from);
+
+  assert.equal(utc.valid, true);
+  assert.equal(tokyo.valid, true);
+  assert.equal(utc.nextRunAt, "2024-01-01T09:00:00.000Z");
+  assert.equal(tokyo.nextRunAt, "2024-01-02T00:00:00.000Z");
 });

@@ -25,7 +25,7 @@ export function validateScheduleExpression(expression?: string, timezone?: strin
   if (!isValidCronField(month, 1, 12)) return { valid: false, error: 'invalid month' };
   if (!isValidCronField(dow, 0, 6)) return { valid: false, error: 'invalid day-of-week' };
 
-  const nextRunAt = computeNextRun(minute, hour, dom, month, dow, from);
+  const nextRunAt = computeNextRun(minute, hour, dom, month, dow, timezone, from);
   if (!nextRunAt) return { valid: false, error: 'could not compute next run time' };
 
   return { valid: true, nextRunAt };
@@ -71,19 +71,42 @@ function isValidTimezone(tz: string): boolean {
   return ['UTC', 'America/New_York', 'Europe/London', 'Asia/Tokyo'].includes(tz);
 }
 
-function computeNextRun(minute: string, hour: string, dom: string, month: string, dow: string, from?: Date): string | null {
+function computeNextRun(
+  minute: string,
+  hour: string,
+  dom: string,
+  month: string,
+  dow: string,
+  timezone: string,
+  from?: Date,
+): string | null {
   const now = from ?? new Date();
   const candidate = new Date(now);
-  candidate.setSeconds(0, 0);
+  candidate.setUTCSeconds(0, 0);
+  const localTime = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: 'numeric',
+    minute: 'numeric',
+    day: 'numeric',
+    month: 'numeric',
+    weekday: 'short',
+    hourCycle: 'h23',
+  });
 
   for (let i = 0; i < 525600; i++) {
-    candidate.setMinutes(candidate.getMinutes() + 1);
+    candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
+    const parts = Object.fromEntries(
+      localTime.formatToParts(candidate)
+        .filter((part) => part.type !== 'literal')
+        .map((part) => [part.type, part.value]),
+    );
+    const localDow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday ?? '');
 
-    if (!matchesMinutes(candidate.getMinutes(), minute)) continue;
-    if (!matchesHours(candidate.getHours(), hour)) continue;
-    if (!matchesDayOfMonth(candidate.getDate(), dom)) continue;
-    if (!matchesMonth(candidate.getMonth() + 1, month)) continue;
-    if (!matchesDayOfWeek(candidate.getDay(), dow)) continue;
+    if (!matchesMinutes(Number(parts.minute), minute)) continue;
+    if (!matchesHours(Number(parts.hour), hour)) continue;
+    if (!matchesDayOfMonth(Number(parts.day), dom)) continue;
+    if (!matchesMonth(Number(parts.month), month)) continue;
+    if (!matchesDayOfWeek(localDow, dow)) continue;
 
     if (candidate > now) return candidate.toISOString();
   }
